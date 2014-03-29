@@ -19,6 +19,8 @@ import (
 
 	"github.com/gogits/gogs/modules/base"
 	"github.com/gogits/gogs/modules/log"
+
+	"github.com/jaseg/ldap"
 )
 
 // User types.
@@ -301,7 +303,7 @@ func GetUserByName(name string) (*User, error) {
 
 // LoginUserPlain validates user by raw user name and password.
 func LoginUserPlain(name, passwd string) (*User, error) {
-	user := User{LowerName: strings.ToLower(name), Passwd: passwd}
+	user := User{LowerName: strings.ToLower(name), Passwd: passwd, LoginType: LT_PLAIN}
 	if err := user.EncodePasswd(); err != nil {
 		return nil, err
 	}
@@ -313,6 +315,75 @@ func LoginUserPlain(name, passwd string) (*User, error) {
 		err = ErrUserNotExist
 	}
 	return &user, err
+}
+
+// LoginUserLDAP tries to authenticate an user against the configured LDAP
+// server and creates a new database entry if successful.
+func LoginUserLDAP(name, passwd string) (*User, error) {
+	user := User{LowerName: strings.ToLower(name), LoginType: LT_LDAP}
+
+	conn, err := LDAPConnect()
+	if err != nil {
+		return nil, err
+	}
+
+	err = ErrUserNotExist
+	dn := nil
+	mailAttr := "mail"
+	if base.LDAPEmailAttribute != nil { mailAttr = base.LDAPEmailAttribute }
+	for _,pattern := range base.LDAPDnPattern {
+		dn = pattern.replace("{{USERNAME}}", name, 1)
+		ret := conn.Bind(dn, passwd)
+		if ret != nil {
+			continue
+		}
+
+		res, err = conn.Search(ldap.search.NewSearchRequest(dn,
+				ldap.search.ScopeBaseObject,
+				ldap.search.NeverDerefAliases,
+				1,
+				0,
+				false,
+				"*",
+				[]string{mailAttr},
+				nil))
+		if err != nil {
+			return nil, err
+		} else if res.Entries.Len() == 1 {
+			user.email,ok = res.Entries[0].Attributes[mailAttr][0]
+			if !ok {
+				return nil, errors.New("The User's LDAP entry does not contain an email address")
+			}
+
+			has, err := orm.Get(&user)
+			if err != nil {
+				return nil, err
+			} else if !has {
+				user, err = RegisterUser(user)
+			}
+			return &user, err
+		}
+	}
+	return nil, err
+}
+
+func LDAPConnect() *LDAPConnection {
+	conn := nil
+	if base.LDAPUseTLS {
+		port := 636
+		if base.LDAPPort != nil { port = base.LDAPPort }
+		conn := NewLDAPTLSConnection(base.LDAPServer, port, tls.Config{})
+	} else if base.LDAPUseSSL {
+		port := 636
+		if base.LDAPPort != nil { port = base.LDAPPort }
+		conn := NewLDAPSSLConnection(base.LDAPServer, port, tls.Config{})
+	} else
+		port := 389
+		if base.LDAPPort != nil { port = base.LDAPPort }
+		conn := NewLDAPConnection(base.LDAPServer, port)
+	}
+	err := conn.connect()
+	return conn, err
 }
 
 // Follow is connection request for receiving user notifycation.

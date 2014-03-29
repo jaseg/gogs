@@ -46,6 +46,13 @@ var (
 	CookieUserName     string
 	CookieRememberName string
 
+	LDAPServer string
+	LDAPPort int
+	LDAPUseTLS bool
+	LDAPUseSSL bool
+	LDAPDnPattern []string
+	LDAPEmailAttribute string
+
 	Cfg         *goconfig.ConfigFile
 	MailService *Mailer
 
