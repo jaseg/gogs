@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-
-
 gogs
 *.exe
 *.exe~
@@ -14,8 +11,10 @@ data/
 *.iml
 public/img/avatar/
 
-=======
->>>>>>> b4db9f67548a41922f1b337daf9c9d2b975b55c4
+# Vim swap files
+*.swp
+*.swo
+
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 *.o
 *.a
